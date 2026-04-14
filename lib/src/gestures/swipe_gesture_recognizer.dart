@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 /// and vertical scrolls using a configurable bias ratio.
 ///
 /// During the first few pixels of movement, this recognizer compares the
-/// horizontal vs. vertical velocity components. If the horizontal component
+/// horizontal vs. vertical displacement components. If the horizontal component
 /// dominates by at least [horizontalBias]×, the gesture is accepted and the
 /// competing [ScrollView] recognizer is rejected from the arena.
 ///
@@ -28,11 +28,11 @@ class SwipeGestureRecognizer extends HorizontalDragGestureRecognizer {
   });
 
   @override
-  void addPointer(PointerDownEvent event) {
+  void addAllowedPointer(PointerDownEvent event) {
     _accumulatedDx = 0.0;
     _accumulatedDy = 0.0;
     _decided = false;
-    super.addPointer(event);
+    super.addAllowedPointer(event);
   }
 
   @override
@@ -43,24 +43,19 @@ class SwipeGestureRecognizer extends HorizontalDragGestureRecognizer {
 
       final totalMoved = _accumulatedDx + _accumulatedDy;
       if (totalMoved >= startThreshold) {
-        _tryDecide();
+        _decided = true;
+        if (_accumulatedDy == 0.0 ||
+            (_accumulatedDx / _accumulatedDy) >= horizontalBias) {
+          // Horizontal intent — accept and let the scroll view lose.
+          resolve(GestureDisposition.accepted);
+        } else {
+          // Vertical intent — reject so the scroll view can handle it.
+          resolve(GestureDisposition.rejected);
+          return;
+        }
       }
     }
     super.handleEvent(event);
-  }
-
-  void _tryDecide() {
-    if (_decided) return;
-    _decided = true;
-
-    if (_accumulatedDy == 0.0 ||
-        (_accumulatedDx / _accumulatedDy) >= horizontalBias) {
-      // Horizontal intent — accept and let the scroll view lose.
-      resolve(GestureDisposition.accepted);
-    } else {
-      // Vertical intent — reject so the scroll view can handle it.
-      resolve(GestureDisposition.rejected);
-    }
   }
 
   @override

@@ -6,7 +6,6 @@ import '../utils/swipe_constants.dart';
 /// Pass a custom [SwipeConfiguration] to any [SwipeableListItem] to override
 /// defaults. Use [SwipeConfiguration.defaults()] for iOS-matched behavior.
 class SwipeConfiguration {
-  // ── Thresholds ──────────────────────────────────────────────────────────────
 
   /// Fraction of action panel width the user must drag past to snap open.
   ///
@@ -23,7 +22,6 @@ class SwipeConfiguration {
   /// Default: 1200.0 px/s.
   final double fullSwipeVelocityThreshold;
 
-  // ── Gesture discrimination ───────────────────────────────────────────────
 
   /// Ratio of horizontal to vertical movement required to claim the gesture.
   ///
@@ -36,14 +34,12 @@ class SwipeConfiguration {
   /// Default: 8.0 px.
   final double gestureStartThreshold;
 
-  // ── Elastic resistance ───────────────────────────────────────────────────
 
   /// Divisor applied to drag delta past the action panel boundary.
   ///
   /// Higher = more resistance. Default: 3.5 (iOS-matched).
   final double rubberBandFactor;
 
-  // ── Animation ────────────────────────────────────────────────────────────
 
   /// Fallback snap animation duration when spring simulation is not used.
   final Duration snapDuration;
@@ -63,12 +59,10 @@ class SwipeConfiguration {
   /// Default: [Curves.easeOutCubic], approximating iOS curve feel.
   final Curve snapCurve;
 
-  // ── Haptics ──────────────────────────────────────────────────────────────
 
   /// Master switch for all haptic feedback in this item. Default: true.
   final bool enableHaptics;
 
-  // ── Behavior ─────────────────────────────────────────────────────────────
 
   /// Auto-close the item when the parent [ScrollView] scrolls. Default: true.
   final bool closeOnScroll;

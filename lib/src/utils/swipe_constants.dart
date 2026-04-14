@@ -34,11 +34,11 @@ abstract final class SwipeConstants {
   /// Pixel-per-second velocity threshold that triggers a full swipe.
   static const double defaultFullSwipeVelocityThreshold = 1200.0;
 
-  /// Fraction of action panel width the user must drag past to lock open.
-  static const double defaultRevealThreshold = 0.5;
+  /// Fraction of action panel width the user must drag past to snap open.
+  static const double defaultRevealThreshold = 0.15;
 
   /// Fraction of screen width drag needed to trigger full swipe.
-  static const double defaultFullSwipeThreshold = 0.75;
+  static const double defaultFullSwipeThreshold = 0.4;
 
   /// Ratio of horizontal/vertical movement required to claim the gesture.
   static const double defaultHorizontalBias = 1.5;

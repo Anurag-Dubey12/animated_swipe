@@ -12,6 +12,7 @@ class AnimatedSwipeExampleApp extends StatelessWidget {
       title: 'animated_swipe example',
       theme: ThemeData.light(useMaterial3: true),
       darkTheme: ThemeData.dark(useMaterial3: true),
+      debugShowCheckedModeBanner: false,
       home: const MailInboxPage(),
     );
   }

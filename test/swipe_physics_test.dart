@@ -49,11 +49,11 @@ void main() {
 
     test('returns 0 when offset is below reveal threshold', () {
       final target = SwipePhysics.resolveSnapTarget(
-        currentOffset: 60.0,
+        currentOffset: 5.0,
         velocity: 0.0,
         openOffset: panelWidth,
-        revealThreshold: 0.5,
-        fullSwipeThreshold: 0.75,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.4,
         screenWidth: screenWidth,
         fullSwipeVelocityThreshold: 1200.0,
       );
@@ -62,11 +62,24 @@ void main() {
 
     test('returns panelWidth when offset exceeds reveal threshold', () {
       final target = SwipePhysics.resolveSnapTarget(
-        currentOffset: 90.0,
+        currentOffset: 30.0,
         velocity: 0.0,
         openOffset: panelWidth,
-        revealThreshold: 0.5,
-        fullSwipeThreshold: 0.75,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.4,
+        screenWidth: screenWidth,
+        fullSwipeVelocityThreshold: 1200.0,
+      );
+      expect(target, equals(panelWidth));
+    });
+
+    test('returns panelWidth on moderate flick velocity', () {
+      final target = SwipePhysics.resolveSnapTarget(
+        currentOffset: 15.0,
+        velocity: 300.0,
+        openOffset: panelWidth,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.4,
         screenWidth: screenWidth,
         fullSwipeVelocityThreshold: 1200.0,
       );
@@ -78,8 +91,8 @@ void main() {
         currentOffset: 50.0,
         velocity: 1500.0,
         openOffset: panelWidth,
-        revealThreshold: 0.5,
-        fullSwipeThreshold: 0.75,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.4,
         screenWidth: screenWidth,
         fullSwipeVelocityThreshold: 1200.0,
       );
@@ -88,11 +101,11 @@ void main() {
 
     test('returns infinity when offset exceeds full swipe threshold', () {
       final target = SwipePhysics.resolveSnapTarget(
-        currentOffset: 320.0, // > 0.75 * 400
+        currentOffset: 170.0, // > 0.4 * 400
         velocity: 0.0,
         openOffset: panelWidth,
-        revealThreshold: 0.5,
-        fullSwipeThreshold: 0.75,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.4,
         screenWidth: screenWidth,
         fullSwipeVelocityThreshold: 1200.0,
       );

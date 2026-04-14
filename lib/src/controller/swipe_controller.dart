@@ -25,7 +25,6 @@ class SwipeController extends ChangeNotifier {
   /// The item currently snapped open, or null if all items are closed.
   String? _openItemId;
 
-  // ── Registration ────────────────────────────────────────────────────────
 
   /// Called by [SwipeableListItem] in [State.initState] to register its notifier.
   void register(String itemId, ValueNotifier<SwipeItemState> notifier) {
@@ -41,7 +40,6 @@ class SwipeController extends ChangeNotifier {
     }
   }
 
-  // ── Coordination ─────────────────────────────────────────────────────────
 
   /// Called when an item begins opening.
   ///
@@ -63,7 +61,6 @@ class SwipeController extends ChangeNotifier {
     }
   }
 
-  // ── Public API ────────────────────────────────────────────────────────────
 
   /// Programmatically closes all registered items.
   void closeAll() {
@@ -100,7 +97,6 @@ class SwipeController extends ChangeNotifier {
   /// The ID of the currently open item, or null if all items are closed.
   String? get openItemId => _openItemId;
 
-  // ── Internal ──────────────────────────────────────────────────────────────
 
   void _closeAllExcept(String exceptId) {
     for (final entry in _registry.entries) {
