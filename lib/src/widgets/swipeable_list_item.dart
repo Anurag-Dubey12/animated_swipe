@@ -13,7 +13,7 @@ import 'swipe_action_panel.dart';
 /// A list item widget that supports iOS-style horizontal swipe actions.
 ///
 /// Wrap any list tile with [SwipeableListItem] to reveal configurable action
-/// buttons on left and/or right swipe, with spring physics, haptic feedback,
+/// buttons on left and/or right swipe, with smooth eased animations, haptic feedback,
 /// and optional full-swipe auto-trigger — all matching native iOS Mail feel.
 ///
 /// Provide a [SwipeController] to enable automatic mutual exclusion across
@@ -90,7 +90,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     _stateNotifier = ValueNotifier(const SwipeItemState.closed());
     _hapticService = HapticService(enabled: widget.configuration.enableHaptics);
 
-    _snapController = AnimationController(vsync: this);
+    _snapController = AnimationController.unbounded(vsync: this);
     _snapController.addListener(_onSnapTick);
 
     _recomputePanelWidths();
@@ -267,8 +267,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     final absVelocity = velocity.abs();
 
     // Full swipe: dragged >= 70% of screen width OR strong fling velocity.
-    if (dragRatio >= 0.70 ||
-        absVelocity >= config.fullSwipeVelocityThreshold) {
+    if (dragRatio >= 0.70 || absVelocity >= config.fullSwipeVelocityThreshold) {
       _runFullSwipeAnimation(direction: dir, velocity: velocity);
       return;
     }
@@ -277,8 +276,14 @@ class _SwipeableListItemState extends State<SwipeableListItem>
         ? _rightPanelMaxWidth
         : _leftPanelMaxWidth;
 
-    // Signed velocity relative to swipe direction.
+    // Signed velocity relative to swipe direction (positive = opening).
     final signedVelocity = dir == SwipeDirection.right ? velocity : -velocity;
+
+    // Snap closed on a reverse flick (dragging back toward closed).
+    if (signedVelocity < -200) {
+      _snapClosed(initialVelocity: velocity);
+      return;
+    }
 
     // Snap open on moderate fling in the swipe direction.
     if (signedVelocity > 200 && state.absOffset > 10) {
@@ -356,12 +361,15 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     _snapController.stop();
 
     final config = widget.configuration;
-    final spring = SwipePhysics.buildSpring(
-      from: fromOffset,
-      to: toOffset,
-      initialVelocity: velocity,
-      dampingRatio: config.springDamping,
-      response: config.springResponse,
+    final duration = Duration(
+      milliseconds: (config.springResponse * 1000).round(),
+    );
+
+    _snapController.value = fromOffset;
+    final future = _snapController.animateTo(
+      toOffset,
+      duration: duration,
+      curve: Curves.easeOut,
     );
 
     _stateNotifier.value = _stateNotifier.value.copyWith(
@@ -370,7 +378,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
           : SwipeOpenState.closing,
     );
 
-    _snapController.animateWith(spring).then((_) {
+    future.then((_) {
       if (!mounted) return;
       _stateNotifier.value = _stateNotifier.value.copyWith(
         dragOffset: toOffset,
@@ -402,28 +410,31 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     double velocity = 0.0,
   }) {
     final itemWidth = context.size?.width ?? MediaQuery.of(context).size.width;
-    final targetOffset =
-        direction == SwipeDirection.right ? itemWidth : -itemWidth;
+    final targetOffset = direction == SwipeDirection.right
+        ? itemWidth
+        : -itemWidth;
     final config = widget.configuration;
     final fromOffset = _stateNotifier.value.dragOffset;
+
+    _snapController.stop();
+
+    final duration = Duration(
+      milliseconds: (config.springResponse * 800).round(),
+    );
+
+    _snapController.value = fromOffset;
+    final future = _snapController.animateTo(
+      targetOffset,
+      duration: duration,
+      curve: Curves.easeIn,
+    );
 
     _stateNotifier.value = _stateNotifier.value.copyWith(
       isFullSwiping: true,
       openState: SwipeOpenState.fullSwiping,
     );
 
-    _snapController.stop();
-
-    // Use spring physics for a smooth, natural slide-off feel.
-    final spring = SwipePhysics.buildSpring(
-      from: fromOffset,
-      to: targetOffset,
-      initialVelocity: velocity,
-      dampingRatio: 1.0, // critically damped — no bounce on exit
-      response: config.springResponse * 0.8, // slightly faster for exit
-    );
-
-    _snapController.animateWith(spring).then((_) {
+    future.then((_) {
       if (!mounted) return;
       _firePrimaryAction(direction);
     });
@@ -484,19 +495,19 @@ class _SwipeableListItemState extends State<SwipeableListItem>
           ? <Type, GestureRecognizerFactory>{
               SwipeGestureRecognizer:
                   GestureRecognizerFactoryWithHandlers<SwipeGestureRecognizer>(
-                () => SwipeGestureRecognizer(
-                  horizontalBias:
-                      widget.configuration.gestureHorizontalBias,
-                  startThreshold:
-                      widget.configuration.gestureStartThreshold,
-                ),
-                (SwipeGestureRecognizer instance) {
-                  instance
-                    ..onStart = _onDragStart
-                    ..onUpdate = _onDragUpdate
-                    ..onEnd = _onDragEnd;
-                },
-              ),
+                    () => SwipeGestureRecognizer(
+                      horizontalBias:
+                          widget.configuration.gestureHorizontalBias,
+                      startThreshold:
+                          widget.configuration.gestureStartThreshold,
+                    ),
+                    (SwipeGestureRecognizer instance) {
+                      instance
+                        ..onStart = _onDragStart
+                        ..onUpdate = _onDragUpdate
+                        ..onEnd = _onDragEnd;
+                    },
+                  ),
             }
           : const {},
       behavior: HitTestBehavior.opaque,

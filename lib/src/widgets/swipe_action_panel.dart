@@ -82,17 +82,55 @@ class SwipeActionPanel extends StatelessWidget {
   }
 
   /// Full-swipe takeover: primary action fills the entire panel.
-  /// Secondary buttons are gone. Icon scales up with an animated feel.
+  /// Secondary buttons are gone. Icon scales up and the content travels
+  /// alongside the foreground item so it never gets stuck.
   Widget _buildFullSwipeTakeover() {
     final primary = _findPrimary();
     final overflow = totalWidth - maxWidth;
-    // How far into the takeover we are (0.0 = just crossed, 1.0 = fully taken).
-    // Use maxWidth as the range — by the time overflow == maxWidth, transition
-    // is complete. Clamped so it never exceeds 1.0.
-    final progress = (overflow / maxWidth).clamp(0.0, 1.0);
+    final progress = maxWidth > 0
+        ? (overflow / maxWidth).clamp(0.0, 1.0)
+        : 1.0;
 
-    // Icon scales from 1.0 to 1.5 during takeover.
+    // Icon scales from 1.0 to 1.5 during the initial takeover phase.
     final iconScale = 1.0 + (0.5 * progress);
+
+    final hasIcon = primary.icon != null;
+    final hasLabel = primary.label != null;
+
+    final content = primary.customWidget ??
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasIcon)
+              IconTheme(
+                data: IconThemeData(
+                  color: primary.foregroundColor,
+                  size: 24,
+                ),
+                child: primary.icon!,
+              ),
+            if (hasIcon && hasLabel)
+              const SizedBox(height: 4),
+            if (hasLabel)
+              Text(
+                primary.label!,
+                style: (primary.labelStyle ??
+                        const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ))
+                    .copyWith(color: primary.foregroundColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        );
+
+    // Position the content at a fixed inset from the trailing edge of the
+    // panel (the edge adjacent to the foreground child). This way the content
+    // moves together with the child as it slides off screen, instead of
+    // getting stuck in the middle.
+    const double inset = 24.0;
 
     return GestureDetector(
       onTap: () => onActionTap(primary),
@@ -117,40 +155,22 @@ class SwipeActionPanel extends StatelessWidget {
           ),
         ),
         clipBehavior: Clip.antiAlias,
-        alignment: direction == SwipeDirection.left
-            ? Alignment.centerRight
-            : Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Transform.scale(
-          scale: iconScale,
-          child: primary.customWidget ??
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (primary.icon != null)
-                    IconTheme(
-                      data: IconThemeData(
-                        color: primary.foregroundColor,
-                        size: 24,
-                      ),
-                      child: primary.icon!,
-                    ),
-                  if (primary.icon != null && primary.label != null)
-                    const SizedBox(height: 4),
-                  if (primary.label != null)
-                    Text(
-                      primary.label!,
-                      style: (primary.labelStyle ??
-                              const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ))
-                          .copyWith(color: primary.foregroundColor),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
+        child: Stack(
+          children: [
+            Positioned(
+              // Anchor to the trailing edge (near the foreground child).
+              right: direction == SwipeDirection.right ? inset : null,
+              left: direction == SwipeDirection.left ? inset : null,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Transform.scale(
+                  scale: iconScale,
+                  child: content,
+                ),
               ),
+            ),
+          ],
         ),
       ),
     );
