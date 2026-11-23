@@ -12,10 +12,10 @@ import 'package:flutter/gestures.dart';
 /// the iOS scroll-vs-swipe discrimination behaviour.
 class SwipeGestureRecognizer extends HorizontalDragGestureRecognizer {
   /// Minimum ratio of |dx|/|dy| required to accept as a horizontal swipe.
-  final double horizontalBias;
+  double horizontalBias;
 
   /// Minimum total horizontal pixels before discrimination fires.
-  final double startThreshold;
+  double startThreshold;
 
   double _accumulatedDx = 0.0;
   double _accumulatedDy = 0.0;
@@ -37,6 +37,11 @@ class SwipeGestureRecognizer extends HorizontalDragGestureRecognizer {
 
   @override
   void handleEvent(PointerEvent event) {
+    if (event is PointerCancelEvent && onCancel != null) {
+      // Flutter ends an accepted drag on pointer cancellation. Give the row a
+      // chance to close before that end callback can commit an action.
+      invokeCallback<void>('onCancel', onCancel!);
+    }
     if (!_decided && event is PointerMoveEvent) {
       _accumulatedDx += event.delta.dx.abs();
       _accumulatedDy += event.delta.dy.abs();

@@ -36,9 +36,8 @@ class SwipeAction {
   /// Whether the item auto-closes after this action is tapped. Defaults to true.
   final bool closeOnTap;
 
-  /// Whether haptic feedback fires when the drag crosses this action's reveal
-  /// threshold. Defaults to true. Ignored if [SwipeConfiguration.enableHaptics]
-  /// is false.
+  /// Whether tapping this action produces haptic feedback. Defaults to true.
+  /// The configuration's master haptic switch also applies.
   final bool enableHaptic;
 
   /// Callback invoked when the user taps this action or triggers it via full swipe.
@@ -54,7 +53,7 @@ class SwipeAction {
   /// The widget is constrained to the button's computed width × item height.
   final Widget? customWidget;
 
-  /// Label text style override. If null, inherits from theme.
+  /// Label text style override. Defaults to a compact, medium-weight label.
   final TextStyle? labelStyle;
 
   const SwipeAction({
@@ -71,8 +70,9 @@ class SwipeAction {
     this.borderRadius,
     this.customWidget,
     this.labelStyle,
-  }) : assert(
-          icon != null || label != null || customWidget != null,
-          'SwipeAction must have at least one of: icon, label, or customWidget.',
-        );
+  }) : assert(flex >= 0 && flex < double.infinity),
+       assert(
+         icon != null || label != null || customWidget != null,
+         'SwipeAction must have at least one of: icon, label, or customWidget.',
+       );
 }

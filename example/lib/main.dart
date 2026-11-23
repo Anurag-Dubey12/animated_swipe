@@ -36,13 +36,13 @@ class MailMessage {
   final bool isRead;
 
   MailMessage copyWith({bool? isRead}) => MailMessage(
-        id: id,
-        sender: sender,
-        subject: subject,
-        preview: preview,
-        time: time,
-        isRead: isRead ?? this.isRead,
-      );
+    id: id,
+    sender: sender,
+    subject: subject,
+    preview: preview,
+    time: time,
+    isRead: isRead ?? this.isRead,
+  );
 }
 
 class MailInboxPage extends StatefulWidget {
@@ -54,6 +54,7 @@ class MailInboxPage extends StatefulWidget {
 
 class _MailInboxPageState extends State<MailInboxPage> {
   final _controller = SwipeController();
+  bool _insetActions = false;
 
   late List<MailMessage> _messages = List.generate(
     20,
@@ -113,10 +114,7 @@ class _MailInboxPageState extends State<MailInboxPage> {
   void _archiveMessage(String id) {
     setState(() => _messages.removeWhere((m) => m.id == id));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Archived'),
-        duration: Duration(seconds: 1),
-      ),
+      const SnackBar(content: Text('Archived'), duration: Duration(seconds: 1)),
     );
   }
 
@@ -132,12 +130,14 @@ class _MailInboxPageState extends State<MailInboxPage> {
 
   void _flagMessage(String id) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Flagged'),
-        duration: Duration(seconds: 1),
-      ),
+      const SnackBar(content: Text('Flagged'), duration: Duration(seconds: 1)),
     );
     _controller.close(id);
+  }
+
+  void _changeLayout(bool inset) {
+    _controller.closeAll();
+    setState(() => _insetActions = inset);
   }
 
   @override
@@ -146,6 +146,15 @@ class _MailInboxPageState extends State<MailInboxPage> {
       appBar: AppBar(
         title: const Text('Inbox'),
         actions: [
+          PopupMenuButton<bool>(
+            tooltip: 'Action layout',
+            initialValue: _insetActions,
+            onSelected: _changeLayout,
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: false, child: Text('Full-height actions')),
+              PopupMenuItem(value: true, child: Text('Inset action')),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.close_fullscreen),
             tooltip: 'Close all',
@@ -162,47 +171,63 @@ class _MailInboxPageState extends State<MailInboxPage> {
             itemId: msg.id,
             controller: _controller,
             itemHeight: 80,
-            cornerRadius: 0,
-            leftActions: [
-              SwipeAction(
-                id: 'delete_${msg.id}',
-                icon: const Icon(Icons.delete),
-                label: 'Delete',
-                backgroundColor: Colors.red,
-                isPrimary: true,
-                onTap: () => _deleteMessage(msg.id),
-              ),
-              SwipeAction(
-                id: 'archive_${msg.id}',
-                icon: const Icon(Icons.archive),
-                label: 'Archive',
-                backgroundColor: const Color(0xFF5856D6),
-                onTap: () => _archiveMessage(msg.id),
-              ),
-            ],
-            rightActions: [
-              SwipeAction(
-                id: 'read_${msg.id}',
-                icon: const Icon(Icons.mark_email_read),
-                label: 'Read',
-                backgroundColor: Colors.blue,
-                isPrimary: true,
-                onTap: () => _markRead(msg.id),
-              ),
-              SwipeAction(
-                id: 'flag_${msg.id}',
-                icon: const Icon(Icons.flag),
-                label: 'Flag',
-                backgroundColor: Colors.orange,
-                onTap: () => _flagMessage(msg.id),
-              ),
-            ],
-            configuration: const SwipeConfiguration(
-              enableHaptics: true,
-              actionWidth: 88,
-              springDamping: 0.7,
-              springResponse: 0.38,
-            ),
+            cornerRadius: _insetActions ? 16 : 0,
+            leftActions: _insetActions
+                ? [
+                    SwipeAction(
+                      id: 'hide_${msg.id}',
+                      label: 'Hide',
+                      backgroundColor: Colors.red,
+                      onTap: () => setState(
+                        () => _messages.removeWhere((m) => m.id == msg.id),
+                      ),
+                    ),
+                  ]
+                : [
+                    SwipeAction(
+                      id: 'delete_${msg.id}',
+                      icon: const Icon(Icons.delete),
+                      label: 'Delete',
+                      backgroundColor: Colors.red,
+                      isPrimary: true,
+                      onTap: () => _deleteMessage(msg.id),
+                    ),
+                    SwipeAction(
+                      id: 'archive_${msg.id}',
+                      icon: const Icon(Icons.archive),
+                      label: 'Archive',
+                      backgroundColor: const Color(0xFF5856D6),
+                      onTap: () => _archiveMessage(msg.id),
+                    ),
+                  ],
+            rightActions: _insetActions
+                ? []
+                : [
+                    SwipeAction(
+                      id: 'read_${msg.id}',
+                      icon: const Icon(Icons.mark_email_read),
+                      label: 'Read',
+                      backgroundColor: Colors.blue,
+                      isPrimary: true,
+                      onTap: () => _markRead(msg.id),
+                    ),
+                    SwipeAction(
+                      id: 'flag_${msg.id}',
+                      icon: const Icon(Icons.flag),
+                      label: 'Flag',
+                      backgroundColor: Colors.orange,
+                      onTap: () => _flagMessage(msg.id),
+                    ),
+                  ],
+            configuration: _insetActions
+                ? const SwipeConfiguration(
+                    actionWidth: 64,
+                    actionInsets: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
+                  )
+                : const SwipeConfiguration(actionWidth: 96),
             child: _MailTile(message: msg),
           );
         },

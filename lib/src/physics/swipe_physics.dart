@@ -32,11 +32,8 @@ abstract final class SwipePhysics {
   /// - `0.0` if the item should snap closed.
   ///
   /// Decision logic (in priority order):
-  /// 1. Velocity exceeds [fullSwipeVelocityThreshold] → full swipe.
-  /// 2. Absolute offset exceeds [fullSwipeThreshold] × [screenWidth] → full swipe.
-  /// 3. Velocity exceeds 200 px/s in swipe direction → snap open.
-  /// 4. Absolute offset exceeds [openOffset] × [revealThreshold] → snap open.
-  /// 5. Otherwise → snap closed.
+  /// Positive [velocity] opens the active side and negative velocity closes it.
+  /// A closing flick takes priority over the full-swipe distance.
   static double resolveSnapTarget({
     required double currentOffset,
     required double velocity,
@@ -45,14 +42,14 @@ abstract final class SwipePhysics {
     required double fullSwipeThreshold,
     required double screenWidth,
     required double fullSwipeVelocityThreshold,
+    bool allowFullSwipe = true,
   }) {
     final abs = currentOffset.abs();
-    final absVelocity = velocity.abs();
+    if (abs == 0 || openOffset <= 0 || velocity < -200) return 0.0;
 
-    if (absVelocity >= fullSwipeVelocityThreshold) {
-      return double.infinity;
-    }
-    if (abs >= fullSwipeThreshold * screenWidth) {
+    if (allowFullSwipe &&
+        (abs >= fullSwipeThreshold * screenWidth ||
+            (abs > 10 && velocity >= fullSwipeVelocityThreshold))) {
       return double.infinity;
     }
     // A moderate flick in the swipe direction snaps open even with small offset.

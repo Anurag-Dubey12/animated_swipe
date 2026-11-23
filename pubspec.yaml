@@ -1,11 +1,11 @@
 name: animated_swipe
-description: "Production-ready iOS-style swipe actions for Flutter list items with spring physics, haptic feedback, and full customisation."
+description: "Configurable Flutter swipe actions with finger-tracked reveal, smooth primary-action takeover, and optional haptics."
 version: 1.0.0
-homepage: https://github.com/example/animated_swipe
+repository: https://github.com/Anurag-Dubey12/animated_swipe
 
 environment:
   sdk: ^3.9.2
-  flutter: ">=3.0.0"
+  flutter: ">=3.35.5"
 
 dependencies:
   flutter:

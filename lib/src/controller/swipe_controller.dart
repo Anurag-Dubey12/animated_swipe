@@ -22,9 +22,8 @@ class SwipeController extends ChangeNotifier {
   /// Registry of all live item notifiers, keyed by [itemId].
   final Map<String, ValueNotifier<SwipeItemState>> _registry = {};
 
-  /// The item currently snapped open, or null if all items are closed.
-  String? _openItemId;
-
+  // Insertion order preserves the most recently opened item if several are open.
+  final Set<String> _openItems = {};
 
   /// Called by [SwipeableListItem] in [State.initState] to register its notifier.
   void register(String itemId, ValueNotifier<SwipeItemState> notifier) {
@@ -34,12 +33,10 @@ class SwipeController extends ChangeNotifier {
   /// Called by [SwipeableListItem] in [State.dispose] to clean up its notifier.
   void unregister(String itemId) {
     _registry.remove(itemId);
-    if (_openItemId == itemId) {
-      _openItemId = null;
+    if (_openItems.remove(itemId)) {
       notifyListeners();
     }
   }
-
 
   /// Called when an item begins opening.
   ///
@@ -47,32 +44,26 @@ class SwipeController extends ChangeNotifier {
   /// commanded to close via their [ValueNotifier].
   void notifyOpened(String itemId, {bool allowSimultaneous = false}) {
     if (!allowSimultaneous) {
+      _openItems.clear();
       _closeAllExcept(itemId);
     }
-    _openItemId = itemId;
+    _openItems
+      ..remove(itemId)
+      ..add(itemId);
     notifyListeners();
   }
 
   /// Called when an item has finished closing itself.
   void notifyClosedSelf(String itemId) {
-    if (_openItemId == itemId) {
-      _openItemId = null;
+    if (_openItems.remove(itemId)) {
       notifyListeners();
     }
   }
 
-
   /// Programmatically closes all registered items.
   void closeAll() {
-    for (final entry in _registry.entries) {
-      final state = entry.value.value;
-      if (!state.isClosed) {
-        entry.value.value = state.copyWith(
-          openState: SwipeOpenState.closing,
-        );
-      }
-    }
-    _openItemId = null;
+    _openItems.clear();
+    _closeAllExcept(null);
     notifyListeners();
   }
 
@@ -83,22 +74,20 @@ class SwipeController extends ChangeNotifier {
     final notifier = _registry[itemId];
     if (notifier == null) return;
     final state = notifier.value;
-    if (state.isClosed) return;
-    notifier.value = state.copyWith(openState: SwipeOpenState.closing);
-    if (_openItemId == itemId) {
-      _openItemId = null;
-      notifyListeners();
+    final wasOpen = _openItems.remove(itemId);
+    if (!state.isClosed) {
+      notifier.value = state.copyWith(openState: SwipeOpenState.closing);
     }
+    if (wasOpen) notifyListeners();
   }
 
   /// Whether any registered item is currently open.
-  bool get hasOpenItem => _openItemId != null;
+  bool get hasOpenItem => _openItems.isNotEmpty;
 
-  /// The ID of the currently open item, or null if all items are closed.
-  String? get openItemId => _openItemId;
+  /// The most recently opened item's ID, or null if all items are closed.
+  String? get openItemId => _openItems.isEmpty ? null : _openItems.last;
 
-
-  void _closeAllExcept(String exceptId) {
+  void _closeAllExcept(String? exceptId) {
     for (final entry in _registry.entries) {
       if (entry.key == exceptId) continue;
       final state = entry.value.value;

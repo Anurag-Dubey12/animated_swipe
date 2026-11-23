@@ -15,7 +15,9 @@ abstract final class SwipeConstants {
   static const Duration snapAnimationDuration = Duration(milliseconds: 300);
 
   /// Duration for full-swipe exit animation.
-  static const Duration fullSwipeAnimationDuration = Duration(milliseconds: 250);
+  static const Duration fullSwipeAnimationDuration = Duration(
+    milliseconds: 250,
+  );
 
   /// Duration for auto-close animations triggered by the controller.
   static const Duration closeAnimationDuration = Duration(milliseconds: 220);
@@ -37,8 +39,8 @@ abstract final class SwipeConstants {
   /// Fraction of action panel width the user must drag past to snap open.
   static const double defaultRevealThreshold = 0.15;
 
-  /// Fraction of screen width drag needed to trigger full swipe.
-  static const double defaultFullSwipeThreshold = 0.4;
+  /// Fraction of the row width needed to trigger a full swipe.
+  static const double defaultFullSwipeThreshold = 0.70;
 
   /// Ratio of horizontal/vertical movement required to claim the gesture.
   static const double defaultHorizontalBias = 1.5;

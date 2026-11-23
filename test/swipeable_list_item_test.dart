@@ -1,0 +1,299 @@
+import 'package:animated_swipe/animated_swipe.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  testWidgets(
+    'takeover compresses and restores secondary actions as you drag',
+    (tester) async {
+      var commits = 0;
+      await _mount(tester, _row('a', onLeft: () => commits++));
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('a-content'))),
+      );
+      await gesture.moveBy(const Offset(-152, 0));
+      await tester.pump();
+
+      final secondary = find.byKey(const ValueKey('a-secondary'));
+      final primary = find.byKey(const ValueKey('a-primary'));
+      final revealSize = tester.getSize(secondary);
+      expect(revealSize.height, 64);
+      expect(revealSize.width, greaterThan(60));
+
+      await gesture.moveBy(const Offset(-136, 0));
+      await tester.pump();
+      expect(tester.getSize(secondary).width, lessThan(revealSize.width));
+      expect(tester.getSize(primary).width, greaterThan(200));
+      expect(commits, 0);
+
+      await gesture.moveBy(const Offset(136, 0));
+      await tester.pump();
+      expect(tester.getSize(secondary).width, closeTo(revealSize.width, 0.1));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(commits, 0);
+      expect(tester.getSize(secondary).width, 88);
+    },
+  );
+
+  testWidgets('inset actions expand in height with one foreground child', (
+    tester,
+  ) async {
+    const label = ValueKey('foreground');
+    var calls = 0;
+    await _mount(
+      tester,
+      SizedBox(
+        width: 400,
+        child: SwipeableListItem(
+          itemId: 'inset',
+          configuration: const SwipeConfiguration(
+            actionInsets: EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            enableHaptics: false,
+          ),
+          leftActions: [_action('hide', onTap: () => calls++)],
+          child: const SizedBox(key: label, height: 64),
+        ),
+      ),
+    );
+
+    final row = find.byKey(label);
+    expect(row, findsOneWidget);
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await gesture.moveBy(const Offset(-32, 0));
+    await tester.pump();
+
+    final button = find.byKey(const ValueKey('hide'));
+    final initialHeight = tester.getSize(button).height;
+    expect(initialHeight, greaterThan(0));
+    expect(initialHeight, lessThan(46));
+    expect(tester.getTopRight(button).dx, tester.getTopRight(row).dx + 24);
+
+    await gesture.moveBy(const Offset(-80, 0));
+    await tester.pump();
+    expect(tester.getSize(button).height, 46);
+    expect(row, findsOneWidget);
+
+    await gesture.moveBy(const Offset(-205, 0));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    expect(button, findsNothing);
+    expect(row, findsOneWidget);
+  });
+
+  testWidgets('short custom full-swipe exit invokes the override once', (
+    tester,
+  ) async {
+    var leftCalls = 0;
+    var overrides = 0;
+    await _mount(
+      tester,
+      _row(
+        'a',
+        onLeft: () => leftCalls++,
+        onFullSwipeLeft: () => overrides++,
+        configuration: const SwipeConfiguration(
+          actionWidth: 88,
+          enableHaptics: false,
+          fullSwipeThreshold: 0.55,
+          springResponse: 0.12,
+        ),
+      ),
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('a-content'))),
+    );
+    await gesture.moveBy(const Offset(-245, 0));
+    await tester.pump();
+    expect(overrides, 0);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(overrides, 1);
+    expect(leftCalls, 0);
+    expect(find.byKey(const ValueKey('a-primary')), findsNothing);
+  });
+
+  testWidgets('a side can reveal buttons without committing a full swipe', (
+    tester,
+  ) async {
+    var calls = 0;
+    await _mount(
+      tester,
+      _row(
+        'a',
+        onLeft: () => calls++,
+        configuration: const SwipeConfiguration(
+          actionWidth: 88,
+          enableHaptics: false,
+          enableFullSwipeLeft: false,
+        ),
+      ),
+    );
+
+    await _reveal(tester, 'a', -330);
+    expect(calls, 0);
+
+    await tester.tap(find.byKey(const ValueKey('a-primary')));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.byKey(const ValueKey('a-primary')), findsNothing);
+  });
+
+  testWidgets('a reverse fling closes a previously opened row', (tester) async {
+    var calls = 0;
+    await _mount(tester, _row('a', onLeft: () => calls++));
+    await _reveal(tester, 'a', -120);
+
+    await tester.flingFrom(
+      tester.getTopLeft(find.byKey(const ValueKey('a'))) +
+          const Offset(100, 32),
+      const Offset(65, 0),
+      2000,
+    );
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+    expect(find.byKey(const ValueKey('a-primary')), findsNothing);
+  });
+
+  testWidgets('shared controller closes a settling row when another opens', (
+    tester,
+  ) async {
+    final controller = SwipeController();
+    addTearDown(controller.dispose);
+    await _mount(
+      tester,
+      Column(
+        children: [
+          _row('a', controller: controller),
+          _row('b', controller: controller),
+        ],
+      ),
+    );
+
+    await tester.drag(find.byKey(const ValueKey('a')), const Offset(-100, 0));
+    await tester.drag(find.byKey(const ValueKey('b')), const Offset(100, 0));
+    await tester.pumpAndSettle();
+
+    expect(controller.openItemId, 'b');
+    expect(find.byKey(const ValueKey('a-primary')), findsNothing);
+    expect(find.byKey(const ValueKey('b-right')), findsOneWidget);
+  });
+
+  testWidgets('vertical scrolling closes an open row', (tester) async {
+    final controller = SwipeController();
+    addTearDown(controller.dispose);
+    await _mount(
+      tester,
+      SizedBox(
+        width: 400,
+        height: 250,
+        child: ListView(
+          key: const ValueKey('list'),
+          children: [
+            _row('a', controller: controller),
+            const SizedBox(height: 500),
+          ],
+        ),
+      ),
+    );
+
+    await _reveal(tester, 'a', -100);
+    expect(controller.openItemId, 'a');
+    await tester.drag(
+      find.byKey(const ValueKey('list')),
+      const Offset(0, -100),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.hasOpenItem, isFalse);
+    expect(find.byKey(const ValueKey('a-primary')), findsNothing);
+  });
+
+  testWidgets('simultaneous rows remain tracked when one row closes', (
+    tester,
+  ) async {
+    final controller = SwipeController();
+    addTearDown(controller.dispose);
+    const config = SwipeConfiguration(
+      actionWidth: 88,
+      allowSimultaneousSwipe: true,
+      enableHaptics: false,
+    );
+    await _mount(
+      tester,
+      Column(
+        children: [
+          _row('a', controller: controller, configuration: config),
+          _row('b', controller: controller, configuration: config),
+        ],
+      ),
+    );
+
+    await _reveal(tester, 'a', -100);
+    await _reveal(tester, 'b', 65);
+    expect(controller.openItemId, 'b');
+
+    controller.close('b');
+    await tester.pumpAndSettle();
+    expect(controller.openItemId, 'a');
+    expect(find.byKey(const ValueKey('a-primary')), findsOneWidget);
+  });
+}
+
+Future<void> _mount(WidgetTester tester, Widget child) {
+  return tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Align(alignment: Alignment.topLeft, child: child),
+      ),
+    ),
+  );
+}
+
+Future<void> _reveal(WidgetTester tester, String id, double offset) async {
+  await tester.drag(find.byKey(ValueKey(id)), Offset(offset, 0));
+  await tester.pumpAndSettle();
+}
+
+Widget _row(
+  String id, {
+  SwipeController? controller,
+  SwipeConfiguration configuration = const SwipeConfiguration(
+    actionWidth: 88,
+    enableHaptics: false,
+  ),
+  VoidCallback? onLeft,
+  VoidCallback? onFullSwipeLeft,
+}) {
+  return SizedBox(
+    width: 400,
+    child: SwipeableListItem(
+      key: ValueKey(id),
+      itemId: id,
+      itemHeight: 64,
+      cornerRadius: 0,
+      controller: controller,
+      configuration: configuration,
+      onFullSwipeLeft: onFullSwipeLeft,
+      leftActions: [
+        _action('$id-primary', primary: true, onTap: onLeft),
+        _action('$id-secondary'),
+      ],
+      rightActions: [_action('$id-right')],
+      child: ColoredBox(key: ValueKey('$id-content'), color: Colors.white),
+    ),
+  );
+}
+
+SwipeAction _action(String id, {bool primary = false, VoidCallback? onTap}) {
+  return SwipeAction(
+    id: id,
+    backgroundColor: primary ? Colors.red : Colors.blue,
+    label: id,
+    isPrimary: primary,
+    onTap: onTap ?? () {},
+  );
+}
