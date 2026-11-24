@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:animated_swipe/animated_swipe.dart';
+import 'package:echo_animated_swipe/echo_animated_swipe.dart';
 
 void main() => runApp(const AnimatedSwipeExampleApp());
 
@@ -9,7 +9,7 @@ class AnimatedSwipeExampleApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'animated_swipe example',
+      title: 'Echo Animated Swipe example',
       theme: ThemeData.light(useMaterial3: true),
       darkTheme: ThemeData.dark(useMaterial3: true),
       debugShowCheckedModeBanner: false,
@@ -52,9 +52,23 @@ class MailInboxPage extends StatefulWidget {
   State<MailInboxPage> createState() => _MailInboxPageState();
 }
 
+enum _ActionContent {
+  text('Text only'),
+  icon('Icon only'),
+  iconAndText('Icon and text'),
+  custom('Custom widget');
+
+  const _ActionContent(this.title);
+
+  final String title;
+}
+
 class _MailInboxPageState extends State<MailInboxPage> {
   final _controller = SwipeController();
   bool _insetActions = false;
+  double _cornerRadius = 16;
+  bool _enableHaptics = true;
+  _ActionContent _actionContent = _ActionContent.iconAndText;
 
   late List<MailMessage> _messages = List.generate(
     20,
@@ -140,6 +154,61 @@ class _MailInboxPageState extends State<MailInboxPage> {
     setState(() => _insetActions = inset);
   }
 
+  SwipeAction _action({
+    required String id,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+  }) {
+    return SwipeAction(
+      id: id,
+      backgroundColor: color,
+      semanticLabel: label,
+      onTap: onTap,
+      isPrimary: isPrimary,
+      icon:
+          _actionContent == _ActionContent.icon ||
+              _actionContent == _ActionContent.iconAndText
+          ? Icon(
+              icon,
+              semanticLabel: _actionContent == _ActionContent.icon
+                  ? label
+                  : null,
+            )
+          : null,
+      label:
+          _actionContent == _ActionContent.text ||
+              _actionContent == _ActionContent.iconAndText
+          ? label
+          : null,
+      customWidget: _actionContent == _ActionContent.custom
+          ? Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      label,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -153,6 +222,41 @@ class _MailInboxPageState extends State<MailInboxPage> {
             itemBuilder: (context) => const [
               PopupMenuItem(value: false, child: Text('Full-height actions')),
               PopupMenuItem(value: true, child: Text('Inset action')),
+            ],
+          ),
+          PopupMenuButton<_ActionContent>(
+            tooltip: 'Action content',
+            icon: const Icon(Icons.widgets_outlined),
+            initialValue: _actionContent,
+            onSelected: (content) => setState(() => _actionContent = content),
+            itemBuilder: (context) => [
+              for (final content in _ActionContent.values)
+                CheckedPopupMenuItem(
+                  value: content,
+                  checked: _actionContent == content,
+                  child: Text(content.title),
+                ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.phone_android),
+            selectedIcon: const Icon(Icons.vibration),
+            isSelected: _enableHaptics,
+            tooltip: _enableHaptics ? 'Turn haptics off' : 'Turn haptics on',
+            onPressed: () => setState(() => _enableHaptics = !_enableHaptics),
+          ),
+          PopupMenuButton<double>(
+            tooltip: 'Corner radius',
+            icon: const Icon(Icons.rounded_corner),
+            initialValue: _cornerRadius,
+            onSelected: (radius) => setState(() => _cornerRadius = radius),
+            itemBuilder: (context) => [
+              for (final radius in [0.0, 8.0, 16.0, 24.0])
+                CheckedPopupMenuItem(
+                  value: radius,
+                  checked: _cornerRadius == radius,
+                  child: Text('${radius.toInt()} px'),
+                ),
             ],
           ),
           IconButton(
@@ -171,63 +275,61 @@ class _MailInboxPageState extends State<MailInboxPage> {
             itemId: msg.id,
             controller: _controller,
             itemHeight: 80,
-            cornerRadius: _insetActions ? 16 : 0,
+            cornerRadius: _cornerRadius,
             leftActions: _insetActions
                 ? [
-                    SwipeAction(
+                    _action(
                       id: 'hide_${msg.id}',
                       label: 'Hide',
-                      backgroundColor: Colors.red,
+                      icon: Icons.visibility_off,
+                      color: Colors.red,
                       onTap: () => setState(
                         () => _messages.removeWhere((m) => m.id == msg.id),
                       ),
                     ),
                   ]
                 : [
-                    SwipeAction(
+                    _action(
                       id: 'delete_${msg.id}',
-                      icon: const Icon(Icons.delete),
+                      icon: Icons.delete,
                       label: 'Delete',
-                      backgroundColor: Colors.red,
+                      color: Colors.red,
                       isPrimary: true,
                       onTap: () => _deleteMessage(msg.id),
                     ),
-                    SwipeAction(
+                    _action(
                       id: 'archive_${msg.id}',
-                      icon: const Icon(Icons.archive),
+                      icon: Icons.archive,
                       label: 'Archive',
-                      backgroundColor: const Color(0xFF5856D6),
+                      color: const Color(0xFF5856D6),
                       onTap: () => _archiveMessage(msg.id),
                     ),
                   ],
-            rightActions: _insetActions
-                ? []
-                : [
-                    SwipeAction(
-                      id: 'read_${msg.id}',
-                      icon: const Icon(Icons.mark_email_read),
-                      label: 'Read',
-                      backgroundColor: Colors.blue,
-                      isPrimary: true,
-                      onTap: () => _markRead(msg.id),
-                    ),
-                    SwipeAction(
-                      id: 'flag_${msg.id}',
-                      icon: const Icon(Icons.flag),
-                      label: 'Flag',
-                      backgroundColor: Colors.orange,
-                      onTap: () => _flagMessage(msg.id),
-                    ),
-                  ],
-            configuration: _insetActions
-                ? const SwipeConfiguration(
-                    actionWidth: 64,
-                    actionInsets: EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 12,
-                    ),
-                  )
-                : const SwipeConfiguration(actionWidth: 96),
+            rightActions: [
+              _action(
+                id: 'read_${msg.id}',
+                icon: Icons.mark_email_read,
+                label: 'Read',
+                color: Colors.blue,
+                isPrimary: true,
+                onTap: () => _markRead(msg.id),
+              ),
+              if (!_insetActions)
+                _action(
+                  id: 'flag_${msg.id}',
+                  icon: Icons.flag,
+                  label: 'Flag',
+                  color: Colors.orange,
+                  onTap: () => _flagMessage(msg.id),
+                ),
+            ],
+            configuration: SwipeConfiguration(
+              enableHaptics: _enableHaptics,
+              actionWidth: _insetActions ? 64 : 96,
+              actionInsets: _insetActions
+                  ? const EdgeInsets.symmetric(horizontal: 8, vertical: 12)
+                  : EdgeInsets.zero,
+            ),
             child: _MailTile(message: msg),
           );
         },

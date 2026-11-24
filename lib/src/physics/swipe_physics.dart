@@ -1,27 +1,64 @@
+import 'dart:math' as math;
+
+import 'package:flutter/animation.dart';
 import 'package:flutter/physics.dart';
+
+import '../utils/swipe_constants.dart';
 
 /// Pure computation utilities for swipe gesture physics.
 ///
 /// No Flutter widgets, no state — only math. All methods are static.
 abstract final class SwipePhysics {
-  /// Applies rubber-band resistance to [rawOffset] past [resistanceStart].
-  ///
-  /// When the absolute drag is below [resistanceStart], returns [rawOffset]
-  /// unchanged. Beyond that, additional movement is divided by [rubberBandFactor],
-  /// giving the iOS "elastic pull" sensation.
-  ///
-  /// The result preserves the sign of [rawOffset] (direction).
+  /// Progressively slows the drag beyond [resistanceStart] and limits the
+  /// visible stretch to [maxStretch].
   static double applyRubberBand({
     required double rawOffset,
     required double resistanceStart,
-    required double rubberBandFactor,
+    required double maxStretch,
   }) {
     final abs = rawOffset.abs();
     if (abs <= resistanceStart) return rawOffset;
-    final sign = rawOffset.sign;
     final overshoot = abs - resistanceStart;
-    final dampened = resistanceStart + overshoot / rubberBandFactor;
-    return sign * dampened;
+    return rawOffset.sign *
+        (resistanceStart + maxStretch * overshoot / (maxStretch + overshoot));
+  }
+
+  /// Recovers the drag position when the user grabs a moving row again.
+  static double resumeRubberBand({
+    required double offset,
+    required double resistanceStart,
+    required double maxStretch,
+  }) {
+    final overshoot = offset.abs() - resistanceStart;
+    if (overshoot <= 0 || maxStretch <= 0) return offset;
+
+    // A previous configuration or spring can leave the row outside its range.
+    final stretch = math.min(overshoot, maxStretch * 0.99);
+    return offset.sign *
+        (resistanceStart + maxStretch * stretch / (maxStretch - stretch));
+  }
+
+  /// Carries velocity toward the target into a monotonic slide with a soft stop.
+  static ({Duration duration, Curve curve}) releaseMotion({
+    required double from,
+    required double to,
+    required double velocity,
+    required double referenceDistance,
+    required Duration maxDuration,
+  }) {
+    final distance = (to - from).abs();
+    if (distance == 0) return (duration: Duration.zero, curve: Curves.linear);
+
+    final fraction = (distance / referenceDistance).clamp(0.0, 1.0);
+    final speed = math.max(0.0, velocity * (to - from).sign);
+    final travel = 0.28 + 0.72 * math.pow(fraction, 0.7);
+    final duration = Duration(
+      microseconds: (maxDuration.inMicroseconds * travel / (1 + speed / 4000))
+          .round(),
+    );
+    final initialSlope = (speed * duration.inMicroseconds / 1000000 / distance)
+        .clamp(0.0, 3.0);
+    return (duration: duration, curve: _ReleaseCurve(initialSlope));
   }
 
   /// Resolves the snap target offset after a drag gesture ends.
@@ -34,6 +71,8 @@ abstract final class SwipePhysics {
   /// Decision logic (in priority order):
   /// Positive [velocity] opens the active side and negative velocity closes it.
   /// A closing flick takes priority over the full-swipe distance.
+  /// An opening flick can commit once the row is halfway open and this drag
+  /// has moved it outward by at least 15% of its width.
   static double resolveSnapTarget({
     required double currentOffset,
     required double velocity,
@@ -42,14 +81,18 @@ abstract final class SwipePhysics {
     required double fullSwipeThreshold,
     required double screenWidth,
     required double fullSwipeVelocityThreshold,
+    double dragStartOffset = 0,
     bool allowFullSwipe = true,
   }) {
     final abs = currentOffset.abs();
     if (abs == 0 || openOffset <= 0 || velocity < -200) return 0.0;
 
+    final outwardDistance = abs - currentOffset.sign * dragStartOffset;
     if (allowFullSwipe &&
         (abs >= fullSwipeThreshold * screenWidth ||
-            (abs > 10 && velocity >= fullSwipeVelocityThreshold))) {
+            (abs >= screenWidth * SwipeConstants.takeoverThreshold &&
+                outwardDistance >= screenWidth * 0.15 &&
+                velocity >= fullSwipeVelocityThreshold))) {
       return double.infinity;
     }
     // A moderate flick in the swipe direction snaps open even with small offset.
@@ -102,5 +145,18 @@ abstract final class SwipePhysics {
     return ((currentOffset - fullSwipeStartOffset) /
             (screenWidth - fullSwipeStartOffset))
         .clamp(0.0, 1.0);
+  }
+}
+
+class _ReleaseCurve extends Curve {
+  const _ReleaseCurve(this.initialSlope);
+
+  final double initialSlope;
+
+  @override
+  double transformInternal(double t) {
+    // Cubic Hermite interpolation with the initial velocity and zero end velocity.
+    final remaining = 1 - t;
+    return t * t * (3 - 2 * t) + initialSlope * t * remaining * remaining;
   }
 }

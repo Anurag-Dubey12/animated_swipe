@@ -1,4 +1,4 @@
-name: animated_swipe
+name: echo_animated_swipe
 description: "Configurable Flutter swipe actions with finger-tracked reveal, smooth primary-action takeover, and optional haptics."
 version: 1.0.0
 repository: https://github.com/Anurag-Dubey12/animated_swipe

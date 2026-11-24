@@ -34,24 +34,30 @@ class SwipeActionPanel extends StatelessWidget {
 
     final rightward = direction == SwipeDirection.right;
     final inset = insets != EdgeInsets.zero;
-    final radius = Radius.circular(cornerRadius);
-    final totalFlex = actions.fold<double>(
+    final visibleActions = actions.where((action) => action.flex > 0).toList();
+    final totalFlex = visibleActions.fold<double>(
       0,
       (total, action) => total + action.flex,
     );
-    final multiple = actions
-        .where((action) => action.flex > 0)
-        .skip(1)
-        .isNotEmpty;
-    final primary = actions.firstWhere(
-      (action) => action.isPrimary && action.flex > 0,
-      orElse: () => actions.firstWhere((action) => action.flex > 0),
+    final primary = visibleActions.firstWhere(
+      (action) => action.isPrimary,
+      orElse: () => visibleActions.first,
     );
     final regularWidth = openWidth - insets.horizontal;
-    final baseWidth = contentWidth.clamp(0.0, regularWidth);
-    final primaryShare = primary.flex / totalFlex;
-    final secondaryWidth = baseWidth * (1 - takeoverProgress);
-    final primaryWidth = contentWidth - secondaryWidth * (1 - primaryShare);
+    final reveal = contentWidth / regularWidth;
+    final shares = List<double>.filled(visibleActions.length, 0);
+    shares[0] = 1;
+    // The first action fills the available space until the other actions enter.
+    for (var index = 1; index < visibleActions.length; index++) {
+      final start = 0.2 + 0.6 * (index - 1) / (visibleActions.length - 1);
+      final progress = ((reveal - start) / (1 - start)).clamp(0.0, 1.0);
+      final share =
+          visibleActions[index].flex /
+          totalFlex *
+          Curves.easeInOut.transform(progress);
+      shares[index] = share;
+      shares[0] -= share;
+    }
 
     return Padding(
       padding: insets,
@@ -63,10 +69,7 @@ class SwipeActionPanel extends StatelessWidget {
           return Align(
             alignment: Alignment.center,
             child: ClipRRect(
-              borderRadius: BorderRadius.horizontal(
-                left: rightward || inset ? radius : Radius.zero,
-                right: !rightward || inset ? radius : Radius.zero,
-              ),
+              borderRadius: BorderRadius.circular(cornerRadius),
               child: SizedBox(
                 width: contentWidth,
                 height: constraints.maxHeight * heightProgress,
@@ -75,24 +78,23 @@ class SwipeActionPanel extends StatelessWidget {
                       ? TextDirection.ltr
                       : TextDirection.rtl,
                   children: [
-                    for (final action in actions)
-                      if (action.flex > 0 &&
-                          (takeoverProgress < 1 || identical(action, primary)))
-                        SwipeActionButton(
-                          key: ValueKey(action.id),
-                          action: action,
-                          width: identical(action, primary)
-                              ? primaryWidth
-                              : secondaryWidth * action.flex / totalFlex,
-                          naturalWidth: regularWidth * action.flex / totalFlex,
-                          takeoverProgress: identical(action, primary)
-                              ? takeoverProgress
-                              : 0,
-                          inset: inset,
-                          nearestRow: multiple && !inset,
-                          direction: direction,
-                          onTap: () => onActionTap(action),
-                        ),
+                    for (final (index, action) in visibleActions.indexed)
+                      SwipeActionButton(
+                        key: ValueKey(action.id),
+                        action: action,
+                        width:
+                            contentWidth *
+                            (shares[index] * (1 - takeoverProgress) +
+                                (identical(action, primary)
+                                    ? takeoverProgress
+                                    : 0)),
+                        naturalWidth: regularWidth * action.flex / totalFlex,
+                        takeoverProgress: identical(action, primary)
+                            ? takeoverProgress
+                            : 0,
+                        direction: direction,
+                        onTap: () => onActionTap(action),
+                      ),
                   ],
                 ),
               ),

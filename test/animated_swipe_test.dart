@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:animated_swipe/animated_swipe.dart';
+import 'package:echo_animated_swipe/echo_animated_swipe.dart';
 
 void main() {
   test('SwipeItemState.closed initialises to resting values', () {

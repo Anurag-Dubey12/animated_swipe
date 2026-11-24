@@ -15,6 +15,20 @@ class SwipeAction {
   /// Text label shown below the icon. Optional.
   final String? label;
 
+  /// Localized action name for screen readers and the keyboard action menu.
+  ///
+  /// Provide this for icon-only and custom actions without a descriptive label.
+  final String? semanticLabel;
+
+  /// The name announced by assistive technology and shown in the keyboard menu.
+  String get accessibleLabel {
+    final iconWidget = icon;
+    return semanticLabel ??
+        label ??
+        (iconWidget is Icon ? iconWidget.semanticLabel : null) ??
+        id;
+  }
+
   /// Background fill color of the button.
   final Color backgroundColor;
 
@@ -62,6 +76,7 @@ class SwipeAction {
     required this.onTap,
     this.icon,
     this.label,
+    this.semanticLabel,
     this.foregroundColor = const Color(0xFFFFFFFF),
     this.flex = 1.0,
     this.isPrimary = false,

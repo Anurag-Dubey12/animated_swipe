@@ -18,7 +18,9 @@ class SwipeConfiguration {
   /// Range: 0.0–1.0. Default: 0.70. The trigger stays past the open panel.
   final double fullSwipeThreshold;
 
-  /// Opening velocity in pixels per second that can trigger a full swipe.
+  /// Opening velocity in pixels per second that can trigger a full swipe
+  /// once the row is halfway open and this drag has moved it outward by at
+  /// least 15% of the row width.
   ///
   /// Default: 1200.0 px/s.
   final double fullSwipeVelocityThreshold;
@@ -34,12 +36,12 @@ class SwipeConfiguration {
   /// Default: 8.0 px.
   final double gestureStartThreshold;
 
-  /// Divisor applied to drag delta past the row's edge.
+  /// Limits how far the panel stretches when full swipe is disabled.
   ///
   /// Higher = more resistance. Default: 3.5 (iOS-matched).
   final double rubberBandFactor;
 
-  /// Duration of the eased open and close animations.
+  /// Maximum duration of the default slide. A custom curve uses this duration.
   final Duration snapDuration;
 
   /// Spring damping ratio. A value of 1 is critically damped.
@@ -55,9 +57,7 @@ class SwipeConfiguration {
   /// Uses a spring simulation for opening and closing. Defaults to false.
   final bool useSpringPhysics;
 
-  /// Easing curve applied to snap animations.
-  ///
-  /// Default: [Curves.easeOutCubic], approximating iOS curve feel.
+  /// Optional custom easing for snapping. The default adapts to release velocity.
   final Curve snapCurve;
 
   /// Master switch for all haptic feedback in this item. Default: true.

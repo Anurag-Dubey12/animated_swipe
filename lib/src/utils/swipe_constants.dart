@@ -1,4 +1,4 @@
-/// Compile-time constants used throughout the animated_swipe package.
+/// Compile-time constants used throughout the echo_animated_swipe package.
 ///
 /// All values are tuned to match iOS UIKit swipe interaction defaults.
 abstract final class SwipeConstants {
@@ -41,6 +41,9 @@ abstract final class SwipeConstants {
 
   /// Fraction of the row width needed to trigger a full swipe.
   static const double defaultFullSwipeThreshold = 0.70;
+
+  /// Row-width fraction where takeover starts and a fast flick may commit.
+  static const double takeoverThreshold = 0.50;
 
   /// Ratio of horizontal/vertical movement required to claim the gesture.
   static const double defaultHorizontalBias = 1.5;

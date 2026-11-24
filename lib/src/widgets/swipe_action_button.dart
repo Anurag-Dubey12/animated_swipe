@@ -11,8 +11,6 @@ class SwipeActionButton extends StatelessWidget {
   final double width;
   final double naturalWidth;
   final double takeoverProgress;
-  final bool inset;
-  final bool nearestRow;
   final SwipeDirection direction;
   final VoidCallback onTap;
 
@@ -22,8 +20,6 @@ class SwipeActionButton extends StatelessWidget {
     required this.width,
     required this.naturalWidth,
     required this.takeoverProgress,
-    required this.inset,
-    required this.nearestRow,
     required this.direction,
     required this.onTap,
   });
@@ -33,15 +29,25 @@ class SwipeActionButton extends StatelessWidget {
     final rightward = direction == SwipeDirection.right;
     final center = width / 2;
     final anchorInset = math.min(36.0, naturalWidth / 2);
-    // Follow the outside edge during the reveal, then move toward the row.
-    final edgeDistance = math.min(center, anchorInset);
+    // Slide in from the outer edge, then toward the row on takeover.
+    final reveal = (width / naturalWidth).clamp(0.0, 1.0);
+    final resting = center * Curves.easeOut.transform(reveal);
+    final anchorProgress = ((width - 2 * anchorInset) / (naturalWidth / 2))
+        .clamp(0.0, 1.0);
+    final edgeDistance =
+        center +
+        (anchorInset - center) * Curves.easeInOut.transform(anchorProgress);
     final towardRow = width - edgeDistance;
-    final resting = nearestRow ? towardRow : (inset ? center : edgeDistance);
     final fromLeft = resting + (towardRow - resting) * takeoverProgress;
     final contentX = rightward ? fromLeft : width - fromLeft;
+    final custom = action.customWidget;
+    final contentWidth = math.max(0.0, naturalWidth - 8);
 
     return Semantics(
-      button: true,
+      button: width > 0,
+      label: width > 0 ? action.accessibleLabel : null,
+      onTap: width > 0 ? onTap : null,
+      excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -52,34 +58,37 @@ class SwipeActionButton extends StatelessWidget {
             borderRadius: action.borderRadius,
           ),
           clipBehavior: Clip.antiAlias,
-          child:
-              action.customWidget ??
-              ClipRect(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned(
-                      left: contentX,
-                      top: 0,
-                      bottom: 0,
-                      width: 0,
-                      child: OverflowBox(
-                        minWidth: 0,
-                        maxWidth: math.max(48, naturalWidth),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: math.max(48, naturalWidth) - 8,
+          child: custom != null
+              ? Transform.translate(
+                  offset: Offset(contentX - center, 0),
+                  child: custom,
+                )
+              : ClipRect(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Positioned(
+                        left: contentX,
+                        top: 0,
+                        bottom: 0,
+                        width: 0,
+                        child: OverflowBox(
+                          minWidth: 0,
+                          maxWidth: naturalWidth,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: contentWidth,
+                              ),
+                              child: _buildDefaultContent(),
                             ),
-                            child: _buildDefaultContent(),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
         ),
       ),
     );

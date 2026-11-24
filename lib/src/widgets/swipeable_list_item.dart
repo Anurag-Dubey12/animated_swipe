@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 
 import '../controller/swipe_controller.dart';
 import '../gestures/swipe_gesture_recognizer.dart';
@@ -10,6 +12,7 @@ import '../models/swipe_action.dart';
 import '../models/swipe_configuration.dart';
 import '../models/swipe_item_state.dart';
 import '../physics/swipe_physics.dart';
+import '../utils/swipe_constants.dart';
 import 'swipe_action_panel.dart';
 
 /// Reveals action buttons as the foreground child is dragged horizontally.
@@ -67,13 +70,16 @@ class SwipeableListItem extends StatefulWidget {
 class _SwipeableListItemState extends State<SwipeableListItem>
     with SingleTickerProviderStateMixin {
   final _state = ValueNotifier(const SwipeItemState.closed());
+  final _actionPointers = <int>{};
   late final AnimationController _animation;
 
   ScrollPosition? _scrollPosition;
   SwipeOpenState? _animationTarget;
   int _animationRevision = 0;
   bool _dragActive = false;
+  bool _showKeyboardFocus = false;
   double _dragOffset = 0;
+  double _dragStartOffset = 0;
   double _rowWidth = 0;
 
   SwipeConfiguration get _config => widget.configuration;
@@ -156,8 +162,13 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     ).fold<double>(0, (total, action) => total + action.flex);
     if (flex <= 0) return 0;
 
-    // Leave some of the row visible even when many actions have to share it.
-    final maxWidth = insets + (rowWidth - insets) * 0.78;
+    // Keep the resting panel before the takeover point when full swipe is on.
+    final maxWidth = _canCommit(direction)
+        ? math.max(
+            rowWidth * SwipeConstants.takeoverThreshold,
+            insets + (rowWidth - insets) * 0.1,
+          )
+        : insets + (rowWidth - insets) * 0.78;
     return math.min(flex * _config.actionWidth + insets, maxWidth);
   }
 
@@ -173,6 +184,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     if (_config.closeOnScroll &&
         _scrollPosition!.isScrollingNotifier.value &&
         !_dragActive &&
+        _actionPointers.isEmpty &&
         _state.value.openState != SwipeOpenState.fullSwiping) {
       _requestClose();
     }
@@ -200,6 +212,16 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     _dragActive = true;
     final state = _state.value;
     _dragOffset = state.dragOffset;
+    _dragStartOffset = state.dragOffset;
+    final direction = state.activeDirection;
+    if (direction != SwipeDirection.none && !_canCommit(direction)) {
+      final openWidth = _openWidth(direction, _rowWidth);
+      _dragOffset = SwipePhysics.resumeRubberBand(
+        offset: state.dragOffset,
+        resistanceStart: openWidth,
+        maxStretch: _maxStretch(openWidth),
+      );
+    }
     _state.value = state.copyWith(
       openState: SwipeOpenState.opening,
       hapticFiredAtThreshold: false,
@@ -231,11 +253,18 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     }
 
     final canCommit = _canCommit(direction);
-    final offset = SwipePhysics.applyRubberBand(
-      rawOffset: _dragOffset,
-      resistanceStart: canCommit ? _rowWidth : openWidth,
-      rubberBandFactor: _config.rubberBandFactor,
-    );
+    if (canCommit) {
+      // Once the row clears the edge, the next reverse movement can bring it
+      // back immediately, even if the pointer continued past it.
+      _dragOffset = _dragOffset.clamp(-_rowWidth, _rowWidth);
+    }
+    final offset = canCommit
+        ? _dragOffset
+        : SwipePhysics.applyRubberBand(
+            rawOffset: _dragOffset,
+            resistanceStart: openWidth,
+            maxStretch: _maxStretch(openWidth),
+          );
     final hasRevealed =
         offset.abs() >= openWidth * _config.actionRevealThreshold;
     final isCommitReady =
@@ -255,6 +284,9 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     }
   }
 
+  double _maxStretch(double openWidth) =>
+      math.min(openWidth, _rowWidth - openWidth) / _config.rubberBandFactor;
+
   void _onDragEnd(DragEndDetails details) {
     if (!_dragActive) return;
     _dragActive = false;
@@ -269,6 +301,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     final velocity = details.primaryVelocity ?? 0;
     final target = SwipePhysics.resolveSnapTarget(
       currentOffset: state.dragOffset,
+      dragStartOffset: _dragStartOffset,
       velocity: direction == SwipeDirection.right ? velocity : -velocity,
       openOffset: openWidth,
       revealThreshold: _config.actionRevealThreshold,
@@ -279,7 +312,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     );
 
     if (target.isInfinite) {
-      _commit(direction);
+      _commit(direction, velocity);
       return;
     }
 
@@ -319,11 +352,7 @@ class _SwipeableListItemState extends State<SwipeableListItem>
               response: _config.springResponse,
             ),
           )
-        : _animation.animateTo(
-            offset,
-            duration: _config.snapDuration,
-            curve: _config.snapCurve,
-          );
+        : _slideTo(from: from, to: offset, velocity: velocity);
     animation.then((_) {
       if (mounted && revision == _animationRevision) {
         _finishSettle(offset, from);
@@ -346,7 +375,33 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     }
   }
 
-  void _commit(SwipeDirection direction) {
+  TickerFuture _slideTo({
+    required double from,
+    required double to,
+    required double velocity,
+  }) {
+    if (_config.snapCurve != Curves.easeOutCubic) {
+      return _animation.animateTo(
+        to,
+        duration: _config.snapDuration,
+        curve: _config.snapCurve,
+      );
+    }
+    final motion = SwipePhysics.releaseMotion(
+      from: from,
+      to: to,
+      velocity: velocity,
+      referenceDistance: _openWidth(_state.value.activeDirection, _rowWidth),
+      maxDuration: _config.snapDuration,
+    );
+    return _animation.animateTo(
+      to,
+      duration: motion.duration,
+      curve: motion.curve,
+    );
+  }
+
+  void _commit(SwipeDirection direction, double velocity) {
     final target = direction == SwipeDirection.right ? _rowWidth : -_rowWidth;
     final from = _state.value.dragOffset;
     final revision = _beginAnimation(SwipeOpenState.fullSwiping);
@@ -356,19 +411,18 @@ class _SwipeableListItemState extends State<SwipeableListItem>
       return;
     }
 
-    // Settle near-complete swipes in a short glide. A custom response can
-    // shorten both the maximum duration and its minimum.
-    final maxMs = (_config.springResponse * 900).round();
-    final minMs = math.min(180, maxMs);
-    final distanceRatio = ((target - from).abs() / _rowWidth).clamp(0.0, 1.0);
-    final milliseconds = (maxMs * distanceRatio).round().clamp(minMs, maxMs);
+    final motion = SwipePhysics.releaseMotion(
+      from: from,
+      to: target,
+      velocity: velocity,
+      referenceDistance: _rowWidth,
+      maxDuration: Duration(
+        milliseconds: (_config.springResponse * 800).round(),
+      ),
+    );
     _animation.value = from;
     _animation
-        .animateTo(
-          target,
-          duration: Duration(milliseconds: milliseconds),
-          curve: Curves.easeOutCubic,
-        )
+        .animateTo(target, duration: motion.duration, curve: motion.curve)
         .then((_) {
           if (mounted && revision == _animationRevision) {
             _firePrimaryAction(direction, target);
@@ -436,12 +490,94 @@ class _SwipeableListItemState extends State<SwipeableListItem>
     return SwipeDirection.none;
   }
 
+  Widget _withAccessibleActions(Widget foreground, {required bool enabled}) {
+    final actions = <String, SwipeAction>{};
+    for (final direction in [SwipeDirection.left, SwipeDirection.right]) {
+      if (!enabled || !_canDrag(direction)) continue;
+      for (final action in _actionsFor(direction)) {
+        if (action.flex <= 0) continue;
+        final name = action.accessibleLabel;
+        var label = name;
+        for (var number = 2; actions.containsKey(label); number++) {
+          label = '$name ($number)';
+        }
+        actions[label] = action;
+      }
+    }
+
+    return Semantics(
+      container: true,
+      customSemanticsActions: {
+        for (final entry in actions.entries)
+          CustomSemanticsAction(label: entry.key): () =>
+              _onActionTap(entry.value),
+      },
+      child: FocusableActionDetector(
+        enabled: enabled,
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.f10, shift: true):
+              _ShowSwipeActionsIntent(),
+          SingleActivator(LogicalKeyboardKey.contextMenu):
+              _ShowSwipeActionsIntent(),
+        },
+        actions: {
+          _ShowSwipeActionsIntent: CallbackAction<_ShowSwipeActionsIntent>(
+            onInvoke: (_) => _showActionMenu(actions),
+          ),
+        },
+        onShowFocusHighlight: (show) =>
+            setState(() => _showKeyboardFocus = show),
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            border: _showKeyboardFocus
+                ? Border.all(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  )
+                : null,
+          ),
+          child: foreground,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showActionMenu(Map<String, SwipeAction> actions) async {
+    final overlay = Navigator.maybeOf(
+      context,
+    )?.overlay?.context.findRenderObject();
+    final row = context.findRenderObject();
+    if (overlay is! RenderBox ||
+        row is! RenderBox ||
+        _state.value.isFullSwiping) {
+      return;
+    }
+
+    final itemId = widget.itemId;
+    final selected = await showMenu<SwipeAction>(
+      context: context,
+      position: RelativeRect.fromSize(
+        row.localToGlobal(Offset.zero, ancestor: overlay) & row.size,
+        overlay.size,
+      ),
+      requestFocus: true,
+      items: [
+        for (final entry in actions.entries)
+          PopupMenuItem(value: entry.value, child: Text(entry.key)),
+      ],
+    );
+    if (mounted && selected != null && widget.itemId == itemId) {
+      _onActionTap(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final canSwipe =
         widget.enabled &&
         (_canDrag(SwipeDirection.left) || _canDrag(SwipeDirection.right));
-    return RawGestureDetector(
+    final foreground = RawGestureDetector(
       gestures: canSwipe
           ? <Type, GestureRecognizerFactory>{
               SwipeGestureRecognizer:
@@ -462,32 +598,32 @@ class _SwipeableListItemState extends State<SwipeableListItem>
             }
           : const {},
       behavior: HitTestBehavior.opaque,
-      child: ValueListenableBuilder<SwipeItemState>(
-        valueListenable: _state,
-        child: widget.child,
-        builder: (context, state, child) => SizedBox(
-          height: widget.itemHeight,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final rowWidth = constraints.hasTightWidth
-                  ? constraints.maxWidth
-                  : _rowWidth;
-              return ClipRect(
-                child: Stack(
-                  fit: StackFit.passthrough,
-                  children: [
-                    if (state.dragOffset != 0 &&
-                        _canDrag(state.activeDirection))
-                      _buildPanel(state, rowWidth),
-                    Transform.translate(
-                      offset: Offset(state.dragOffset, 0),
-                      child: child,
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+      child: RepaintBoundary(child: widget.child),
+    );
+    return ValueListenableBuilder<SwipeItemState>(
+      valueListenable: _state,
+      child: _withAccessibleActions(foreground, enabled: canSwipe),
+      builder: (context, state, child) => SizedBox(
+        height: widget.itemHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final rowWidth = constraints.hasTightWidth
+                ? constraints.maxWidth
+                : _rowWidth;
+            return ClipRect(
+              child: Stack(
+                fit: StackFit.passthrough,
+                children: [
+                  if (state.dragOffset != 0 && _canDrag(state.activeDirection))
+                    _buildPanel(state, rowWidth),
+                  Transform.translate(
+                    offset: Offset(state.dragOffset, 0),
+                    child: child,
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -502,18 +638,11 @@ class _SwipeableListItemState extends State<SwipeableListItem>
       return const SizedBox.shrink();
     }
 
-    final single = actions.where((action) => action.flex > 0).skip(1).isEmpty;
-    final inset = _config.actionInsets != EdgeInsets.zero;
-    final start = single
-        ? math.max(openWidth, rowWidth * (inset ? 0.48 : 0.42))
-        : openWidth;
-    final end = math.min(
-      rowWidth,
-      math.max(
-        start + rowWidth * 0.12,
-        rowWidth * (single && !inset ? 0.60 : 0.86),
-      ),
+    final start = math.max(
+      openWidth,
+      rowWidth * SwipeConstants.takeoverThreshold,
     );
+    final end = math.min(rowWidth, start + rowWidth * 0.15);
     final progress = _canCommit(direction)
         ? SwipePhysics.fullSwipeProgress(
             currentOffset: width,
@@ -530,17 +659,42 @@ class _SwipeableListItemState extends State<SwipeableListItem>
       width: width,
       child: IgnorePointer(
         ignoring: state.isFullSwiping,
-        child: SwipeActionPanel(
-          actions: actions,
-          width: width,
-          openWidth: openWidth,
-          takeoverProgress: Curves.easeInOutCubic.transform(progress),
-          direction: direction,
-          insets: _config.actionInsets,
-          cornerRadius: widget.cornerRadius,
-          onActionTap: _onActionTap,
+        child: Listener(
+          onPointerDown: (event) => _actionPointers.add(event.pointer),
+          onPointerUp: (event) => _actionPointers.remove(event.pointer),
+          onPointerCancel: (event) => _actionPointers.remove(event.pointer),
+          child: RawGestureDetector(
+            gestures: {
+              SwipeGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<SwipeGestureRecognizer>(
+                    () => SwipeGestureRecognizer(
+                      horizontalBias: _config.gestureHorizontalBias,
+                      startThreshold: _config.gestureStartThreshold,
+                    ),
+                    (recognizer) => recognizer
+                      ..horizontalBias = _config.gestureHorizontalBias
+                      ..startThreshold = _config.gestureStartThreshold
+                      // Claim a swipe so it cannot become an action tap.
+                      ..onUpdate = (_) {},
+                  ),
+            },
+            child: SwipeActionPanel(
+              actions: actions,
+              width: width,
+              openWidth: openWidth,
+              takeoverProgress: Curves.easeInOutCubic.transform(progress),
+              direction: direction,
+              insets: _config.actionInsets,
+              cornerRadius: widget.cornerRadius,
+              onActionTap: _onActionTap,
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _ShowSwipeActionsIntent extends Intent {
+  const _ShowSwipeActionsIntent();
 }

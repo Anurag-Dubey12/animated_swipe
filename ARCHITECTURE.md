@@ -1,13 +1,13 @@
 # Animated swipe architecture
 
-`lib/animated_swipe.dart` exports `SwipeableListItem`, `SwipeController`, and the action, configuration, and state models. The example exercises both layouts with a single package dependency.
+`lib/echo_animated_swipe.dart` exports `SwipeableListItem`, `SwipeController`, and the action, configuration, and state models. The example exercises both layouts with a single package dependency.
 
 ## Gesture and animation
 
-- `SwipeGestureRecognizer` distinguishes horizontal movement from a vertical scroll. `SwipeableListItem` tracks the signed drag offset. The foreground follows the pointer while resistance applies once the drag passes the row edge, or the open panel when full swipe is disabled.
-- `SwipeActionPanel` allocates widths by action flex. After the panel opens, the primary grows as secondary widths taper to zero. Reversing the drag restores those widths along the same curve. The same action widget stays mounted as it grows.
-- `SwipeActionButton` anchors icon and label content within the expanding surface. With insets, the panel also grows in height and stays centered vertically as it enters.
-- `SwipePhysics` resolves release using direction-relative velocity and distance. The widget animates with one ticker. A successful full swipe completes the exit before invoking the callback. Cancellation and interrupted animations clear pending completions.
+- `SwipeGestureRecognizer` listens on the foreground, so dragging an exposed action keeps the panel in place. The foreground follows the pointer up to the row edge and responds immediately when the drag reverses. When full swipe is disabled, the row stretches progressively beyond the open panel.
+- `SwipeActionPanel` starts with the first action. The second enters after 20% of the reveal, and the settled panel shows all actions at their flex widths. Past halfway across the row, the primary grows as the other actions taper to zero. Reversing the drag restores those widths along the same curve.
+- `SwipeActionButton` slides the icon and label from the outer edge toward the center during reveal. The primary content then moves toward the foreground row during takeover. Both layouts use this motion. An inset panel also grows in height as it enters.
+- `SwipePhysics` uses the release velocity to carry the row toward its destination and slow it to rest. The default slide duration scales with the remaining distance. A successful full swipe completes the exit before invoking the callback. Cancellation and interrupted animations clear pending completions.
 - `SwipeController` tracks open rows with stable IDs. The row listens for a close request and for scrolling by its enclosing vertical scrollable. A `ValueListenableBuilder` updates the foreground transform and actions while reusing the same foreground child.
 
 ## Reference motion

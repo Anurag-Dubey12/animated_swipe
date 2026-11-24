@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:animated_swipe/animated_swipe.dart';
-import 'package:animated_swipe/src/physics/swipe_physics.dart';
+import 'package:echo_animated_swipe/echo_animated_swipe.dart';
+import 'package:echo_animated_swipe/src/physics/swipe_physics.dart';
 
 void main() {
   group('SwipePhysics.applyRubberBand', () {
@@ -9,7 +9,7 @@ void main() {
       final result = SwipePhysics.applyRubberBand(
         rawOffset: 50.0,
         resistanceStart: 80.0,
-        rubberBandFactor: 3.5,
+        maxStretch: 32,
       );
       expect(result, equals(50.0));
     });
@@ -18,7 +18,7 @@ void main() {
       final result = SwipePhysics.applyRubberBand(
         rawOffset: 80.0,
         resistanceStart: 80.0,
-        rubberBandFactor: 3.5,
+        maxStretch: 32,
       );
       expect(result, equals(80.0));
     });
@@ -27,19 +27,62 @@ void main() {
       final result = SwipePhysics.applyRubberBand(
         rawOffset: 120.0,
         resistanceStart: 80.0,
-        rubberBandFactor: 4.0,
+        maxStretch: 40,
       );
-      // 80 + (40 / 4) = 90
-      expect(result, closeTo(90.0, 0.001));
+      expect(result, closeTo(100.0, 0.001));
     });
 
     test('preserves negative sign for left swipe', () {
       final result = SwipePhysics.applyRubberBand(
         rawOffset: -120.0,
         resistanceStart: 80.0,
-        rubberBandFactor: 4.0,
+        maxStretch: 40,
       );
-      expect(result, closeTo(-90.0, 0.001));
+      expect(result, closeTo(-100.0, 0.001));
+    });
+
+    test('resumes an interrupted stretch at the same visible offset', () {
+      final rawOffset = SwipePhysics.resumeRubberBand(
+        offset: -100,
+        resistanceStart: 80,
+        maxStretch: 40,
+      );
+      final offset = SwipePhysics.applyRubberBand(
+        rawOffset: rawOffset,
+        resistanceStart: 80,
+        maxStretch: 40,
+      );
+      expect(offset, closeTo(-100, 0.001));
+    });
+  });
+
+  group('SwipePhysics.releaseMotion', () {
+    test('carries release speed and decelerates to rest', () {
+      const maxDuration = Duration(milliseconds: 300);
+      final glide = SwipePhysics.releaseMotion(
+        from: 0,
+        to: -100,
+        velocity: -900,
+        referenceDistance: 200,
+        maxDuration: maxDuration,
+      );
+      final stationary = SwipePhysics.releaseMotion(
+        from: 0,
+        to: -100,
+        velocity: 0,
+        referenceDistance: 200,
+        maxDuration: maxDuration,
+      );
+
+      const step = 0.001;
+      final seconds = glide.duration.inMicroseconds / 1000000;
+      final initialSpeed = glide.curve.transform(step) * 100 / (step * seconds);
+      final finalSpeed =
+          (1 - glide.curve.transform(1 - step)) * 100 / (step * seconds);
+      expect(initialSpeed, closeTo(900, 5));
+      expect(finalSpeed, closeTo(0, 5));
+      expect(glide.duration, lessThan(stationary.duration));
+      expect(stationary.duration, lessThan(maxDuration));
     });
   });
 
@@ -86,7 +129,7 @@ void main() {
       expect(target, equals(panelWidth));
     });
 
-    test('returns infinity when velocity exceeds full swipe threshold', () {
+    test('a short fast flick only reveals the actions', () {
       final target = SwipePhysics.resolveSnapTarget(
         currentOffset: 50.0,
         velocity: 1500.0,
@@ -96,7 +139,37 @@ void main() {
         screenWidth: screenWidth,
         fullSwipeVelocityThreshold: 1200.0,
       );
-      expect(target, equals(double.infinity));
+      expect(target, equals(panelWidth));
+    });
+
+    test(
+      'a fast flick past halfway can commit before the distance threshold',
+      () {
+        final target = SwipePhysics.resolveSnapTarget(
+          currentOffset: -210,
+          velocity: 1500,
+          openOffset: panelWidth,
+          revealThreshold: 0.15,
+          fullSwipeThreshold: 0.70,
+          screenWidth: screenWidth,
+          fullSwipeVelocityThreshold: 1200,
+        );
+        expect(target, equals(double.infinity));
+      },
+    );
+
+    test('a small additional flick on an open row cannot commit', () {
+      final target = SwipePhysics.resolveSnapTarget(
+        currentOffset: -220,
+        dragStartOffset: -200,
+        velocity: 1500,
+        openOffset: 200,
+        revealThreshold: 0.15,
+        fullSwipeThreshold: 0.70,
+        screenWidth: screenWidth,
+        fullSwipeVelocityThreshold: 1200,
+      );
+      expect(target, equals(200));
     });
 
     test('returns infinity when offset exceeds full swipe threshold', () {
@@ -165,11 +238,13 @@ void main() {
 
     test('closeAll sets all items to closing state', () {
       final controller = SwipeController();
-      final n1 = ValueNotifier(const SwipeItemState(
-        dragOffset: 80,
-        openState: SwipeOpenState.open,
-        activeDirection: SwipeDirection.left,
-      ));
+      final n1 = ValueNotifier(
+        const SwipeItemState(
+          dragOffset: 80,
+          openState: SwipeOpenState.open,
+          activeDirection: SwipeDirection.left,
+        ),
+      );
       final n2 = ValueNotifier(const SwipeItemState.closed());
 
       controller.register('a', n1);
@@ -178,18 +253,23 @@ void main() {
       controller.closeAll();
 
       expect(n1.value.openState, SwipeOpenState.closing);
-      expect(n2.value.openState, SwipeOpenState.closed); // already closed, unchanged
+      expect(
+        n2.value.openState,
+        SwipeOpenState.closed,
+      ); // already closed, unchanged
 
       controller.dispose();
     });
 
     test('notifyOpened closes all other items', () {
       final controller = SwipeController();
-      final n1 = ValueNotifier(const SwipeItemState(
-        dragOffset: 80,
-        openState: SwipeOpenState.open,
-        activeDirection: SwipeDirection.left,
-      ));
+      final n1 = ValueNotifier(
+        const SwipeItemState(
+          dragOffset: 80,
+          openState: SwipeOpenState.open,
+          activeDirection: SwipeDirection.left,
+        ),
+      );
       final n2 = ValueNotifier(const SwipeItemState.closed());
 
       controller.register('a', n1);
@@ -204,4 +284,3 @@ void main() {
     });
   });
 }
-
